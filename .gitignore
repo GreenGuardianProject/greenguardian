@@ -19,3 +19,22 @@ ENV/
 /task-a/lib/
 /task-a/lib64/
 /task-a/pyvenv.cfg
+
+# Any other virtual environment name, build artefacts, OS files.
+.venv*/
+*.egg-info/
+build/
+dist/
+.DS_Store
+*.log
+
+# Generated run outputs. REPRODUCE.md writes every run under /runs/.
+# The starter kit's committed example outputs (task-a/outputs/,
+# task-b/output/, task-b/results/) stay tracked.
+/runs/
+/task-b/results_*/
+/task-a/model_6/outputs/*
+!/task-a/model_6/outputs/forecast_submission.csv
+!/task-a/model_6/outputs/detection_submission.csv
+!/task-a/model_6/outputs/peak_submission.csv
+!/task-a/model_6/outputs/metrics_model_6.json
