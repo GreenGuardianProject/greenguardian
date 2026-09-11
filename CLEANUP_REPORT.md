@@ -20,14 +20,17 @@ changed or contacted.
    their starter kit and their dataset.
 4. **The citation in `README.md` has no proceedings details** (volume, pages,
    DOI). Add them when you have them.
-5. **Local paths in the evidence files.** The committed `score_metrics.json`
-   files under `task-b/published_results/` contain absolute Windows paths
-   with your username (`<local path>`). I kept them
-   verbatim because they are evidence. Edit them if you would rather not
-   publish the path.
+5. **Local paths: resolved.** The history rewrite of 2026-09-11 (see "History
+   rewrite" at the end of this report) replaced the absolute local paths in
+   the three published `score_metrics.json` files with repository-relative
+   paths, and redacted local paths and the personal e-mail address from this
+   report, in every commit of `public-release`.
 6. **Merge `public-release` into `master` yourself** after reading the diff.
 
 ## Git state
+
+The commit SHAs in this section are from before the history rewrite. The
+"History rewrite" section at the end maps them to the current ones.
 
 - `master`: untouched at `da6c6c9` ("More info about README.md").
 - `pre-cleanup-snapshot`: `85d594f`, a commit of the full working tree as it
@@ -433,3 +436,226 @@ committed outputs.
   `threadpoolctl`, which were in `.venv_run` for the deleted ensemble
   experiments. No remaining code imports them, and the Task A numbers
   reproduce exactly without them.
+
+## History rewrite (2026-09-11)
+
+Two things had to be removed from `public-release` before publication:
+local filesystem paths that revealed a Windows username, and the personal
+e-mail address on the commits. A redaction commit on top would have left both
+readable in the earlier commits, so the five commits were rewritten instead.
+Nothing had been pushed, so the rewrite affected no one else.
+
+### Safety ref and backup
+
+- The tag `public-release-preredact` points at the pre-rewrite tip,
+  `d1c6b8e40985e9b6a982cecd35a61555c62b053a`. It is a lightweight, local tag.
+- I re-checked the backup tarball before rewriting. It is present,
+  233,766,628 bytes, and passes `gzip -t`; `tar -tzf` lists 23,647 files,
+  and a file extracted from it reads correctly.
+
+### Tool
+
+`git filter-repo`, version `a40bce548d2c`, installed with pip into a separate
+virtual environment outside the repository, so that `.venv/` still matches the
+lock file. It made one pass that did both jobs:
+
+```bash
+git filter-repo --force --refs da6c6c9..public-release \
+  --replace-text <rules file> --mailmap <mailmap file>
+```
+
+The rules file and the mailmap are outside the repository. Before running, a
+pre-flight check confirmed that each rule matched only its intended places.
+`--refs da6c6c9..public-release` limited the rewrite to our five commits:
+- The organisers' commits (`e668d1c`, `da6c6c9`) were not rewritten.
+- `master`, `pre-cleanup-snapshot` and the tag were not touched.
+- Partial mode left the `origin` remote in place; it was not removed.
+
+### What was replaced
+
+The replacements are described here in redacted form. Quoting the removed
+strings would put them back into the repository. The verbatim before/after
+table is kept outside the repository and is not part of this report.
+
+| Rule | Where (commits before the rewrite) | What was removed | Replacement |
+|---|---|---|---|
+| R1 | The three published `score_metrics.json` files, values `run.jobs`, `run.sites` and `run.forecast_csv`: 9 values in `0973ef9` and `d1c6b8e` | The absolute Windows path of the repository's `data` directory on the author's machine, including the username and the cloud-sync folder | `data/`, giving `data/job_trace.csv`, `data/site_config.json` and `data/forecast_baseline.csv` |
+| R2 | `CLEANUP_REPORT.md`, checklist bullet 5 (`d1c6b8e`) | An example of that absolute path | `<local path>` |
+| R3 | `CLEANUP_REPORT.md`, Backup section, 2 places (`d1c6b8e`) | The absolute path of the backup archive in the author's user profile | `%USERPROFILE%\greendigit-backup-20260911.tar.gz` |
+| R4 | `CLEANUP_REPORT.md`, Backup section (`d1c6b8e`) | The absolute path of the directory containing the repository | `<the directory containing the repository>` |
+| R5 | `CLEANUP_REPORT.md`, removed-files table, `task-a/.venv/` row (`d1c6b8e`) | The interpreter path of the dead environment, including another person's username | "pointed at a Python 3.12 interpreter on a machine that no longer exists" |
+| R6 | `CLEANUP_REPORT.md`, Git state section (`d1c6b8e`) | The author's personal e-mail address | `48059346+NikosVat@users.noreply.github.com` |
+| M | Author and committer of all five commits | The author's personal e-mail address | `Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>`; the name and dates are unchanged |
+
+These were left in place by decision:
+- the organisers' server paths in `data/raw_metrics/summary_sites_metadata.json`
+  and `task-b/results/score_metrics.json`, which are their content at their
+  commits and already public upstream;
+- the two `@uth.gr` addresses in the paper's author block.
+
+`paper/GreenGuardian_Paper.pdf` was not altered: its blob is `ed7d0ada`
+before and after, so its bytes are identical.
+
+In this sixth commit, checklist bullet 5 was rewritten to say the local paths
+are resolved, and a note was added under "Git state" that its SHAs predate
+the rewrite.
+
+### Commit mapping
+
+| Before | After | Message (unchanged) |
+|---|---|---|
+| `d06b4e8699f621e959e78a88fc166ec34a58d9d6` | `3e0c434d2d0451b3a2e9687fc1c1fe89de976e3b` | Add GreenGuardian code as submitted |
+| `6c53460911af4c0161ac5c891d619938325dc7d3` | `f4b803bf4896ee67d996a2c00d4e56e9e1ae0c2b` | Clean up repository for public release |
+| `fc9224c5b7753e9a953570068d61d343e071bc21` | `b1f0fb825ee35ca9558fac48163eba222ac88620` | Fix import failure, debug output and undeclared dependencies |
+| `0973ef95261eec5030a7fcbfcc41a7fb96c739cc` | `271ef7abb81fe588f1422aeaf0d4ad07a5cbc164` | Add submitted Task A outputs and published Task B results |
+| `d1c6b8e40985e9b6a982cecd35a61555c62b053a` | `037ec3c6cf50248294243ee49d314719d0a8b935` | Add documentation, licence and cleanup report |
+
+The parent of `3e0c434` is still `da6c6c98c65fa027ca0ec6e04d1a80280d4f6854`.
+The first three commits changed SHA only because of the mailmap and the new
+parent chain; their trees are unchanged.
+
+### Verification
+
+**Leak scan.** A scan of every blob in `e668d1c`, `da6c6c9`, `3e0c434`,
+`f4b803b`, `b1f0fb8`, `271ef7a` and `037ec3c` (136 blobs) searched for the
+username, the other person's username, the user-profile and sync-folder path
+fragments, any drive-letter path, and the personal e-mail address. It found
+none of them. The only matches from its wider pattern list are the items
+left in place by decision: the organisers' server paths in the two files
+above, the paper's author block, and coincidental byte sequences inside the
+compressed PDF and PNG data. After this sixth commit exists, the same scan is
+repeated across all six commits.
+
+**Authors and committers**
+(`git log --format='%h | A: %an <%ae> | C: %cn <%ce>' da6c6c9..public-release`,
+before this sixth commit):
+
+```text
+037ec3c | A: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com> | C: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>
+271ef7a | A: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com> | C: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>
+b1f0fb8 | A: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com> | C: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>
+f4b803b | A: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com> | C: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>
+3e0c434 | A: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com> | C: Nikolaos Vatopoulos <48059346+NikosVat@users.noreply.github.com>
+```
+
+The author and committer dates are identical to those before the rewrite for
+every commit (2026-09-11 18:22:30, 18:27:07, 18:27:08, 18:27:08 and 18:55:13,
+all +0300).
+
+**Commit messages.**
+`diff <(git log --format='%B%n---' da6c6c9..public-release-preredact) <(git log --format='%B%n---' da6c6c9..public-release)`
+printed nothing: the messages are identical.
+
+**Per-commit tree differences, before vs after** (`git diff --name-only`):
+
+```text
+d06b4e8 -> 3e0c434: (none)
+6c53460 -> f4b803b: (none)
+fc9224c -> b1f0fb8: (none)
+0973ef9 -> 271ef7a: the three published score_metrics.json files
+d1c6b8e -> 037ec3c: CLEANUP_REPORT.md and the three published score_metrics.json files
+```
+
+**Whole tree** (`git diff --stat public-release-preredact public-release`):
+
+```text
+ CLEANUP_REPORT.md                                            | 12 ++++++------
+ task-b/published_results/full_window/score_metrics.json      |  6 +++---
+ .../published_results/normalized_ranking/score_metrics.json  |  6 +++---
+ task-b/published_results/truncated_window/score_metrics.json |  6 +++---
+ 4 files changed, 15 insertions(+), 15 deletions(-)
+```
+
+Every other tracked file is byte-identical to `public-release-preredact`.
+
+**Our code as submitted.** The tree of `3e0c434` is identical to that of
+`d06b4e8` (`36228a4c683e7b09fd8747b6f0acaf19acd9accf`). The three files we
+wrote have the same blob IDs:
+
+```text
+task-a/model_6/train_model_6.py           fca755a67f16cbf1b35b4c7e8102559fca657420
+task-a/model_6/lgbm_core.py               cb81e24c0f199c0adec3e8064e4a2040e7f6bc06
+task-b/dirac_sim/schedulers/model_6_v4.py 52b693f247cc52179f7c6199943a94e4dc3abcec
+```
+
+**`score_metrics.json` files.** Each was parsed with `json.loads`, and the
+bytes from `"evaluation"` to the end of the file were compared with the same
+file at `public-release-preredact`:
+
+```text
+full_window: parses OK | evaluation block bytes identical: True (948 bytes) | evaluation dict equal: True | run keys changed: ['jobs', 'sites', 'forecast_csv'] | new run paths: data/job_trace.csv, data/site_config.json, data/forecast_baseline.csv | final: 0.7317904319184824
+truncated_window: parses OK | evaluation block bytes identical: True (1003 bytes) | evaluation dict equal: True | run keys changed: ['jobs', 'sites', 'forecast_csv'] | new run paths: data/job_trace.csv, data/site_config.json, data/forecast_baseline.csv | final: 0.7332082197926377
+normalized_ranking: parses OK | evaluation block bytes identical: True (1007 bytes) | evaluation dict equal: True | run keys changed: ['jobs', 'sites', 'forecast_csv'] | new run paths: data/job_trace.csv, data/site_config.json, data/forecast_baseline.csv | final: 0.7330277384073633
+```
+
+**Repository state.** `git status` was clean after the rewrite. `master` is
+at `da6c6c98c65fa027ca0ec6e04d1a80280d4f6854`, `pre-cleanup-snapshot` at
+`85d594f286ae0af24e4632e837ac4ed7848df930`, and the tag at
+`d1c6b8e40985e9b6a982cecd35a61555c62b053a`.
+
+**Task B reruns after the rewrite.** Both runs used fresh output directories
+and the fresh `.venv/`, from `task-b/`:
+
+```bash
+python examples/run_simulation.py --offline --objective carbon \
+  --start 2025-11-19T23:00:00 --end 2026-03-12T17:00:00 \
+  --scheduler dirac_sim.schedulers.Model6GreenWindowSchedulerV4 \
+  --output-dir ../runs/redact-truncated
+python examples/run_simulation.py --offline --objective carbon \
+  --start 2025-11-19T23:00:00 --end 2026-03-13T17:00:00 \
+  --scheduler dirac_sim.schedulers.Model6GreenWindowSchedulerV4 \
+  --output-dir ../runs/redact-full
+```
+
+| Field | Truncated, expected | Truncated, produced (7 min 17 s) | Full, expected | Full, produced (7 min 9 s) |
+|---|---|---|---|---|
+| `jobs_dispatched` | 28642 | 28642 | 28662 | 28662 |
+| `energy_wh_total` | 771810.49064897 | 771810.49064897 | 791810.49064897 | 791810.49064897 |
+| `cfp_g_total` | 310547.75864442 | 310547.75864442 | 314547.75864442 | 314547.75864442 |
+| `deadline_penalty` | | 0.000348894006000966 | 0.0 | 0.0 |
+| `final` | 0.7332082197926377 | 0.7332082197926377 | 0.7317904319184824 | 0.7317904319184824 |
+
+Both `dispatch_log.csv` files are byte-identical to the checked-out
+`task-b/published_results/*/dispatch_log.csv`. Compared with the committed
+blobs, the only difference is line endings. Git stores the blobs with LF
+(`core.autocrlf=true` on this machine), and the simulator writes CRLF on
+Windows. With the CR bytes removed, the reruns match the committed blobs byte
+for byte:
+
+```text
+core.autocrlf=true
+truncated: CR bytes: committed blob=0 checked-out=28643 rerun=28643 | lines: 28643
+           checked-out file vs rerun: byte-identical
+           committed blob vs rerun with CR removed: byte-identical
+full:      CR bytes: committed blob=0 checked-out=28663 rerun=28663 | lines: 28663
+           checked-out file vs rerun: byte-identical
+           committed blob vs rerun with CR removed: byte-identical
+```
+
+The rewrite changed only path strings, and the published numbers reproduce
+exactly after it.
+
+### Remaining pre-publish checklist
+
+1. **Remove or replace the `origin` remote.** It still points at the
+   organisers' repository; the rewrite did not remove it.
+2. **Confirm that `paper/GreenGuardian_Paper.pdf` is the camera-ready
+   version.** Its bytes are unchanged by the rewrite, so you can compare it
+   directly.
+3. **Confirm with the organisers** that they are happy for their starter kit
+   and dataset to be republished.
+4. **Add proceedings details** (volume, pages, DOI) to the citation in
+   `README.md`.
+5. **Push only the branch you intend to publish, by name.** Never push
+   `pre-cleanup-snapshot` or the tag `public-release-preredact`, and never
+   use `--all`, `--mirror` or `--tags`: both still contain the unredacted
+   content. Delete them once you are satisfied. The backup tarball holds the
+   same unredacted data and must stay private.
+6. **Set the commit identity before any further commit.** No git identity is
+   configured on this machine. Set `user.email` to the noreply address in
+   this repository; a commit made with the personal address would bring it
+   back.
+7. **Merge `public-release` into `master` yourself** after reading the diff.
+   `master` is its base, so the merge is a fast-forward.
+8. **Delete the verbatim redaction table** outside the repository once you
+   have read it.
