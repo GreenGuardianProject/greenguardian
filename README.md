@@ -140,4 +140,4 @@ MIT. The dataset belongs to the challenge organisers.
 
 Nikolaos Vatopoulos and Dimitrios Thanasoulias. *Asymmetric Gradient Boosting
 for Carbon Forecasting and Deadline-Safe Green-Window Scheduling.* GreenDIGIT
-Discovery Challenge, ECML-PKDD 2026.
+Discovery Challenge, 1st Place, ECML-PKDD 2026.
