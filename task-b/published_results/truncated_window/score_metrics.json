@@ -1,0 +1,47 @@
+{
+  "run": {
+    "scheduler": "dirac_sim.schedulers.Model6GreenWindowSchedulerV4",
+    "objective": "carbon",
+    "offline": true,
+    "api_url": null,
+    "jobs": "data/job_trace.csv",
+    "sites": "data/site_config.json",
+    "forecast_csv": "data/forecast_baseline.csv",
+    "start": "2025-11-19T23:00:00+00:00",
+    "end": "2026-03-12T17:00:00+00:00"
+  },
+  "evaluation": {
+    "declared_objective": "carbon",
+    "baseline": {
+      "energy_wh_total": 7279431.33108995,
+      "cfp_g_total": 3127038.1921551498,
+      "makespan_total": 429930.0,
+      "deadlines_met": 28662,
+      "n_jobs": 28662,
+      "jobs_dispatched": 28662
+    },
+    "submission": {
+      "energy_wh_total": 771810.49064897,
+      "cfp_g_total": 310547.75864442,
+      "makespan_total": 429630.0,
+      "deadlines_met": 28642,
+      "n_jobs": 28662,
+      "jobs_dispatched": 28642
+    },
+    "deltas": {
+      "energy_wh_total": 6507620.84044098,
+      "cfp_g_total": 2816490.4335107296,
+      "makespan_total": 300.0,
+      "energy_norm": 0.8939737933439086,
+      "carbon_norm": 0.9006894896827623,
+      "makespan_norm": 0.0006977880120019538,
+      "deadline_rate": -0.000697788012001932
+    },
+    "scores": {
+      "pareto": 0.5984536903462243,
+      "declaration": 0.13510342345241433,
+      "deadline_penalty": 0.000348894006000966,
+      "final": 0.7332082197926377
+    }
+  }
+}
