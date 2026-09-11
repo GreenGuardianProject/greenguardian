@@ -1,222 +1,230 @@
-# Task B Scheduling Framework
+# Task B: scheduling
 
-Task B asks participants to build a scheduler that uses Task A forecasts to
-decide when and where grid or HPC jobs should run. The goal is to reduce
-energy, carbon, and makespan relative to the FCFS baseline while respecting job
-deadlines and site constraints.
+A discrete-event simulator replays a trace of 28,662 jobs from three sites in
+15-minute ticks. At each tick the scheduler decides, for every waiting job,
+whether to dispatch it now or hold it for a later bucket. The run is scored
+against a first-come-first-served (FCFS) reference; higher is better.
 
-This folder contains the simulator, scheduler interface, baselines, local
-evaluator, forecast API client, and participant scheduler template.
+This directory is the organisers' Task B starter kit (the `dirac_sim` package,
+examples and tests) with our scheduler added.
+
+## Where our code sits
+
+| Path | Written by | What it is |
+|---|---|---|
+| `dirac_sim/schedulers/model_6_v4.py` | us | `Model6GreenWindowSchedulerV4`, our scheduler |
+| `dirac_sim/schedulers/__init__.py` | us | Exports the scheduler |
+| `examples/run_simulation.py` | organisers, changed by us | The runner used for all our results (see below) |
+| `published_results/` | us (generated) | Score files and dispatch logs of our published runs |
+| `dirac_sim/core/` | organisers | Simulator (`wms.py`), job queue, site model, scheduler interface, evaluator |
+| `dirac_sim/baselines/` | organisers | `fcfs.py` and `greedy_carbon.py` |
+| `dirac_sim/api/` | organisers | Forecast client and forecast API server |
+| everything else | organisers | Backends, examples, tests, Docker files, docs |
+
+## How our scheduler works
+
+At start-up the scheduler loads our Task A forecast table,
+`../task-a/model_6/outputs/forecast_submission.csv`, or the file named by the
+`TASKB_FORECAST_CSV` environment variable. It also merges any forecasts the
+simulator delivers at each tick; a delivered forecast replaces the preloaded
+one for the same site and timestamp.
+
+For each ready job, in deadline order (express jobs first), it compares the
+best site available now with the best forecast bucket before the job's
+deadline, allowing for slack. If the forecast bucket saves enough carbon
+without costing much energy, the job is held and dispatched then; otherwise it
+runs now. Every dispatch, immediate or deferred, is recorded in a forward
+reservation ledger of slots, cores and memory per site and bucket, so that
+held jobs do not collide when their bucket arrives. Jobs with too little slack,
+and express jobs, run immediately. No job is held past the end of the
+simulation window.
 
 ## Install
 
-Use an isolated virtual environment inside `task-b/`.
+Use the single environment described in the root README. From the repository
+root:
 
 ```bash
-cd task-b
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev,server]"
+python -m pip install -r requirements-lock.txt
+python -m pip install -e "./task-a[model,dev]" -e "./task-b[dev]"
 ```
 
-## Inputs
+Installing `dirac_sim` from its own `pyproject.toml` (the `-e "./task-b[dev]"`
+part) is what brings in `requests`. See the warning below.
 
-Simulator inputs live in the repository root `data/` directory:
+## Run our scheduler
 
-- `data/job_trace.csv`: aggregate job trace, one job per site, VO, and 15-minute bucket.
-- `data/site_config.json`: anonymized site registry with exact site IDs and capacity limits.
-- `data/forecast_baseline.csv`: offline forecast source using summarized site buckets.
-
-Regenerate these files from the repository root after replacing
-`data/raw_metrics/`:
+Run Task A first (`task-a/README.md`); the scheduler reads its output. Then,
+from `task-b/`:
 
 ```bash
-python3 data/prepare_data.py
+python examples/run_simulation.py --offline --objective carbon \
+  --start 2025-11-19T23:00:00 --end 2026-03-13T17:00:00 \
+  --scheduler dirac_sim.schedulers.Model6GreenWindowSchedulerV4 \
+  --output-dir ../runs/task-b-full
 ```
 
-The site IDs in `job_trace.csv`, `site_config.json`, and forecast responses must
-match exactly. The generated trace pins each aggregate job to its source site
-through `site_whitelist`.
+This is the published run: final score 0.7317904319184824. With
+`--end 2026-03-12T17:00:00` it is the truncated window, scoring
+0.7332082197926377. `REPRODUCE.md` lists the expected totals for both and
+explains why they differ.
 
-## Baseline E2E Run
+Always use a new `--output-dir` for each run. The runner caches the FCFS
+reference run as `baseline_execution_report_<start>_<end>.csv` in the output
+directory, and on the next run into the same directory it loads that file
+instead of re-simulating FCFS.
 
-From `task-b/`, run the offline simulator without a live model server:
+Use `examples/run_simulation.py`, not `python -m dirac_sim simulate`, for our
+scheduler. The runner sets the `TASKB_EVAL_END` environment variable to the
+window end, and the scheduler uses it to avoid holding jobs past the window.
+The organisers' `python -m dirac_sim simulate` entry point does not set it,
+so there the scheduler falls back to the earliest of the sites' last
+forecast timestamps as the window end, and the results can differ.
+
+## Run the baselines
 
 ```bash
-./.venv/bin/python -m dirac_sim simulate --offline
+python examples/run_simulation.py --offline --objective carbon \
+  --start 2025-11-19T23:00:00 --end 2026-03-13T17:00:00 \
+  --scheduler fcfs --output-dir ../runs/task-b-fcfs
+
+python examples/run_simulation.py --offline --objective carbon \
+  --start 2025-11-19T23:00:00 --end 2026-03-13T17:00:00 \
+  --scheduler greedy_carbon --output-dir ../runs/task-b-greedy
 ```
 
-By default this runs a 24-hour raw-metrics smoke window:
-`2025-11-19T23:00:00` through `2025-11-20T23:00:00`.
+`fcfs` and `greedy_carbon` are built-in names for
+`dirac_sim.baselines.fcfs.FCFSScheduler` and
+`dirac_sim.baselines.greedy_carbon.GreedyCarbonScheduler`. Without `--start`
+and `--end`, the runner uses a 24-hour smoke window starting
+`2025-11-19T23:00:00`. The organisers' entry point also runs the baselines:
+`python -m dirac_sim simulate --offline --scheduler greedy_carbon`.
 
-Run a longer local window with `--start` and `--end`:
+## Offline and live mode
 
-```bash
-./.venv/bin/python -m dirac_sim simulate --offline \
-  --start 2025-11-19T23:00:00 \
-  --end 2026-03-12T17:00:00
-```
+The simulator feeds the scheduler a forecast bundle, with 1-hour and 24-hour
+horizons, at every tick. The same bundles provide the per-site energy and
+carbon signals that the simulator uses to charge each job.
 
-The default `greedy_carbon` scheduler can tie FCFS on the smoke window. To
-confirm that scoring responds to changed dispatches, run:
+- **Offline mode** (`--offline`) reads the bundles from a CSV file,
+  `--forecast-csv`, by default `../data/forecast_baseline.csv`. No network or
+  server is involved. All our published numbers are offline runs.
+- **Live mode** (no `--offline`) requests the bundles over HTTP from a Task
+  A-compatible service at `--api-url` (default `http://localhost:8000`),
+  using `POST /forecast`. The organisers' Task A API
+  (`uvicorn task_a.api:app`, see `task-a/README.md`) implements the contract.
 
-```bash
-./.venv/bin/python -m dirac_sim simulate --offline \
-  --scheduler test_policy \
-  --output-dir /tmp/taskb_test_policy
-```
+### Warning: live mode without `requests` scores 0.0 silently
 
-`test_policy` intentionally ignores job site whitelists and is not a valid
-submission policy. It is only a local scoring sanity check.
+Live mode needs the `requests` package. `dirac_sim` declares it, so installing
+`dirac_sim` from its own `pyproject.toml` provides it. But if you run
+`dirac_sim` from an environment where it was not installed that way (for
+example through `PYTHONPATH`, or the runner's own "run without installing"
+path setup) and `requests` is missing, `dirac_sim/api/forecast_client.py`
+does not fail. It returns an empty forecast bundle on every tick. Every site
+signal then falls back to the simulator's default of 1000 Wh and 200 gCO2 per
+bucket, FCFS and your scheduler are charged identically, and the run scores
+0.0 with no error.
 
-## Outputs
-
-The runner writes to `results/` unless `--output-dir` is provided:
-
-- `baseline_execution_report.csv`: FCFS baseline execution records.
-- `execution_report.csv`: selected scheduler execution records.
-- `dispatch_log.csv`: participant-facing dispatch decisions.
-- `score_summary.txt`: human-readable evaluator output.
-- `score_metrics.json`: machine-readable run metadata, objective totals,
-  deltas, penalties, and final score.
-
-## Implement Your Scheduler
-
-Start from [examples/custom_scheduler_template.py](examples/custom_scheduler_template.py).
-Implement a class that subclasses `dirac_sim.core.scheduler.Scheduler` and
-returns a `DispatchPlan` from `schedule()`.
-
-Run a scheduler by dotted class path:
-
-```bash
-./.venv/bin/python -m dirac_sim simulate --offline \
-  --scheduler my_package.my_scheduler.MyScheduler \
-  --objective carbon
-```
-
-The scheduler receives:
-
-- `queue`: pending jobs, priorities, deadlines, and site whitelists.
-- `registry`: available sites, capacities, and current energy/carbon signals.
-- `forecast`: 1-hour and 24-hour Task A forecast bundles.
-- `now`: current simulation timestamp.
-
-Jobs with no decision remain pending for the next tick. To defer a job, return
-a `DispatchDecision` with `dispatch_at` set to a future timestamp.
-
-## Task A Forecast Integration
-
-Offline mode reads `data/forecast_baseline.csv`. Live mode calls a Task
-A-compatible forecast service:
-
-```bash
-./.venv/bin/python -m dirac_sim simulate \
-  --api-url http://localhost:8000 \
-  --scheduler my_package.my_scheduler.MyScheduler
-```
-
-The server must implement:
+The symptom to look for is this line in the log, repeated on every tick:
 
 ```text
-POST /forecast
+WARNING  dirac_sim.api.forecast_client  requests not installed; using empty bundle
 ```
 
-Request:
+If you see it, run `python -m pip install -e "./task-b[dev]"` from the
+repository root.
 
-```json
-{
-  "series_ids": ["site_a", "site_b"],
-  "reference_timestamp_utc": "2025-11-20T00:00:00+00:00",
-  "horizons": ["1h", "24h"]
-}
-```
+### Warning: a missing forecast file also degrades silently
 
-Response:
+If `../task-a/model_6/outputs/forecast_submission.csv` does not exist and
+`TASKB_FORECAST_CSV` is not set, the scheduler starts with no forecast table
+and no warning. It then works only from the forecasts the simulator delivers,
+and its results change. The file is committed to this repository. If you
+delete it or regenerate it elsewhere, rerun Task A or set
+`TASKB_FORECAST_CSV`.
 
-```json
-{
-  "reference_timestamp_utc": "2025-11-20T00:00:00+00:00",
-  "forecasts": [
-    {
-      "series_id": "site_a",
-      "forecast_timestamp_utc": "2025-11-20T01:00:00+00:00",
-      "horizon_steps_15m": 4,
-      "energy_wh_pred": 412.5,
-      "cfp_g_pred": 98.3
-    }
-  ]
-}
-```
+## Our changes to `examples/run_simulation.py`
 
-The Task A baseline server in `../task-a` already implements this contract.
+The runner is the organisers' file, with four changes we made during the
+challenge. All our results were produced with it.
 
-## What Participants May Change
-
-Participants should add or modify their own scheduler code and supporting
-policy/model code.
-
-Do not modify these files for a submitted result:
-
-- `dirac_sim/core/evaluator.py`
-- `dirac_sim/core/wms.py`
-- `dirac_sim/core/job_queue.py`
-- `dirac_sim/core/site_model.py`
-- `dirac_sim/core/scheduler.py`
-- `tests/`
-- bundled input data under `../data/`
-
-The local evaluator is a convenience check. Official scoring should be run by
-organizers from a clean checkout with the official evaluator and hidden data.
+1. It sets `TASKB_EVAL_END` to the window end before building the scheduler.
+2. It caches the FCFS reference run in the output directory, as described
+   above, and still writes `baseline_execution_report.csv`.
+3. It strips non-ASCII characters from the score summary it prints to the
+   console, to avoid encoding errors on Windows consoles.
+4. It writes `score_summary.txt` and `score_metrics.json` as UTF-8.
 
 ## Scoring
 
-The local evaluator compares your scheduler report to FCFS:
+The evaluator (`dirac_sim/core/evaluator.py`) compares the scheduler's run
+with the FCFS run over the same window. For energy, carbon and makespan
+totals it computes a normalised improvement
 
 ```text
-Score = 1 - (1/3)((1 - delta_energy) + (1 - delta_carbon) + (1 - delta_makespan))
-      + 0.15 * max(0, delta_declared)
-      - deadline_penalty
+delta_x = (FCFS_x - ours_x) / FCFS_x          clamped to [-1, 1]
 ```
 
-Where each normalized delta is `(baseline - submission) / baseline`; positive
-values mean improvement over FCFS. The declaration bonus rewards improvement in
-the objective selected by `--objective`.
-
-The evaluator writes both text and JSON summaries. The important machine fields
-are in `score_metrics.json` under `evaluation.scores` and
-`evaluation.deltas`.
-
-## Submission Artifacts
-
-For local review, provide:
-
-- the scheduler implementation,
-- the command used to run it,
-- `dispatch_log.csv`,
-- `score_metrics.json`,
-- any documented dependencies needed by the scheduler.
-
-The simulator creates `dispatch_log.csv` automatically. Its columns are:
+and then
 
 ```text
-job_id,dispatch_timestamp_utc,site_id,declared_objective,deadline_met,status
+pareto  = 1 - (1/3) * ((1 - delta_energy) + (1 - delta_carbon) + (1 - delta_makespan))
+bonus   = 0.15 * max(0, delta_declared)       delta of the --objective you declare
+penalty = 0.005 * (percentage of jobs that missed their deadline)
+final   = max(0, pareto + bonus - penalty)
 ```
+
+`pareto` is also clamped to [0, 1]. Higher is better. FCFS scored against
+itself gets 0.0. For our published run, delta_energy = 0.8912,
+delta_carbon = 0.8994 and delta_makespan = 0, so pareto = 0.5969, the carbon
+bonus is 0.1349, the penalty is 0, and the final score is 0.7318.
+
+## Outputs
+
+Each run writes to its `--output-dir`:
+
+- `baseline_execution_report.csv` and `baseline_execution_report_<start>_<end>.csv`: the FCFS reference run
+- `execution_report.csv`: the selected scheduler's execution records
+- `dispatch_log.csv`: dispatch decisions
+- `score_summary.txt`: human-readable score
+- `score_metrics.json`: run settings, totals, deltas, penalties and final score
+
+## Inputs
+
+The simulator reads from the repository root `data/` directory:
+`job_trace.csv` (the jobs), `site_config.json` (sites and capacities) and
+`forecast_baseline.csv` (offline forecasts and site signals).
+`python data/prepare_data.py` regenerates them from `data/raw_metrics/`.
+
+## Writing a scheduler
+
+Subclass `dirac_sim.core.scheduler.Scheduler` and return a `DispatchPlan`
+from `schedule(queue, registry, forecast, now)`. The organisers' template is
+`examples/custom_scheduler_template.py`. To defer a job, return a
+`DispatchDecision` whose `dispatch_at` is in the future; jobs without a
+decision stay pending until the next tick.
 
 ## Tests
 
 ```bash
 cd task-b
-./.venv/bin/python -m pytest
+python -m pytest
 ```
 
-## Optional Deployment
+## Files the rules say not to modify
 
-The repository includes a Docker Compose setup for API and monitoring demos:
+`dirac_sim/core/evaluator.py`, `dirac_sim/core/wms.py`,
+`dirac_sim/core/job_queue.py`, `dirac_sim/core/site_model.py`,
+`dirac_sim/core/scheduler.py`, `tests/`, and the input data under `../data/`.
+None of them has been changed in this repository. (During the challenge we
+ran with a locally modified `wms.py` that added a console progress bar and
+faster job lookups. We have restored the organisers' version, and both
+published runs reproduce with it to every digit.)
 
-```bash
-docker-compose up --build
-```
+## Optional deployment
 
-Grafana is exposed at `http://localhost:3000` when the monitoring services are
-enabled.
+`docker-compose up --build` starts the organisers' API and monitoring demo.
