@@ -96,6 +96,35 @@ def run_once(scheduler, queue_path, sites_path, client, start, end, label):
     return report
 
 
+def load_report_from_csv(path, queue, start, end):
+    import csv
+    from datetime import datetime
+    from dirac_sim.core.wms import ExecutionRecord, SimulationReport
+    records = []
+    with open(path, newline="") as fh:
+        for row in csv.DictReader(fh):
+            dt = lambda s: datetime.fromisoformat(s) if s else None
+            records.append(ExecutionRecord(
+                job_id=row["job_id"],
+                series_id=row["series_id"],
+                site_id=row["site_id"],
+                dispatch_time=dt(row["dispatch_time"]),
+                start_time=dt(row["start_time"]),
+                end_time=dt(row["end_time"]),
+                energy_wh=float(row["energy_wh"]),
+                cfp_g=float(row["cfp_g"]),
+                deadline_met=row["deadline_met"] in ("True", "true", "1"),
+                rationale=row.get("rationale", ""),
+                status=row.get("status", "done")
+            ))
+    return SimulationReport(
+        records=records,
+        queue=queue,
+        start_time=start,
+        end_time=end
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Task B simulation runner")
@@ -145,14 +174,24 @@ def main():
     # ------------------------------------------------------------------ #
     # Run FCFS baseline                                                    #
     # ------------------------------------------------------------------ #
-    baseline_report = run_once(
-        FCFSScheduler(), args.jobs, args.sites, client, start, end, "FCFS"
-    )
-    baseline_report.to_csv(f"{args.output_dir}/baseline_execution_report.csv")
+    start_str = start.strftime("%Y%m%d%H%M")
+    end_str = end.strftime("%Y%m%d%H%M")
+    baseline_csv = os.path.join(args.output_dir, f"baseline_execution_report_{start_str}_{end_str}.csv")
+    if os.path.exists(baseline_csv):
+        logger.info("Loading cached FCFS baseline report from: %s", baseline_csv)
+        baseline_report = load_report_from_csv(baseline_csv, JobQueue.from_csv(args.jobs), start, end)
+    else:
+        baseline_report = run_once(
+            FCFSScheduler(), args.jobs, args.sites, client, start, end, "FCFS"
+        )
+        baseline_report.to_csv(baseline_csv)
+    # Also write to the default path for standard submission format
+    baseline_report.to_csv(os.path.join(args.output_dir, "baseline_execution_report.csv"))
 
     # ------------------------------------------------------------------ #
     # Run participant scheduler                                            #
     # ------------------------------------------------------------------ #
+    os.environ["TASKB_EVAL_END"] = end.isoformat()
     SchedulerClass = load_scheduler(args.scheduler)
     scheduler = SchedulerClass(declared_objective=args.objective) \
         if args.scheduler != "fcfs" else SchedulerClass()
@@ -175,17 +214,19 @@ def main():
         declared_objective=args.objective,
     )
     print("\n" + "=" * 55)
-    print(result)
+    # Strip all unicode characters to avoid console encoding errors on Windows
+    print(str(result).encode('ascii', 'ignore').decode('ascii'))
+    print("=" * 55)
     print("=" * 55)
 
     # Write score summary
     summary_path = f"{args.output_dir}/score_summary.txt"
-    with open(summary_path, "w") as fh:
+    with open(summary_path, "w", encoding="utf-8") as fh:
         fh.write(str(result))
     logger.info("Score summary written to %s", summary_path)
 
     metrics_path = f"{args.output_dir}/score_metrics.json"
-    with open(metrics_path, "w") as fh:
+    with open(metrics_path, "w", encoding="utf-8") as fh:
         json.dump({
             "run": {
                 "scheduler": args.scheduler,
