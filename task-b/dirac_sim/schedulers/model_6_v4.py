@@ -6,6 +6,7 @@ without causing site overload.
 from __future__ import annotations
 
 import csv
+import logging
 import os
 from bisect import bisect_right
 from collections import defaultdict
@@ -25,6 +26,7 @@ from dirac_sim.core.scheduler import (
 )
 from dirac_sim.core.site_model import Site, SiteRegistry
 
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class _Signal:
@@ -193,7 +195,8 @@ class Model6GreenWindowSchedulerV4(Scheduler):
                 if future_fallback:
                     self._reserve(job, future_fallback.site_id, future_fallback.timestamp, fallback_latency)
                     return self._dispatch(job, future_fallback.site_id, future_fallback.timestamp, "model_6_v4: fallback future")
-                print(f"DEBUG: Job {job.job_id} low slack, no current, no future_fallback. candidates={len(candidates)}, immediate={len(immediate_candidates)}")
+                logger.debug("Job %s low slack, no current, no future_fallback. candidates=%d, immediate=%d",
+                             job.job_id, len(candidates), len(immediate_candidates))
                 return None
 
         future = self._best_future(job, candidates, now, latest)
@@ -203,7 +206,8 @@ class Model6GreenWindowSchedulerV4(Scheduler):
                 self._reserve(job, current.site_id, now, fallback_latency)
                 return self._dispatch(job, current.site_id, now, "model_6_v4: immediate no future signal")
             else:
-                print(f"DEBUG: Job {job.job_id} no future, no current. candidates={len(candidates)}, immediate={len(immediate_candidates)}")
+                logger.debug("Job %s no future, no current. candidates=%d, immediate=%d",
+                             job.job_id, len(candidates), len(immediate_candidates))
                 return None
                 
         if current is None:

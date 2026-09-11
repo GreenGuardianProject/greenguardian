@@ -23,6 +23,12 @@ dev = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
 ]
+# GreenGuardian Task A model (model_6/train_model_6.py, model_6/lgbm_core.py).
+model = [
+    "lightgbm>=4.6",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
 
 [project.scripts]
 task-a = "task_a.cli:main"
